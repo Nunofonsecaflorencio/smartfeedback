@@ -26,20 +26,68 @@ class assign_feedback_smartfeedback extends assign_feedback_plugin {
         return get_string('pluginname', 'assignfeedback_smartfeedback');
     }
     
-        /**
-     * Get form elements for the grading page
+    /**
+     * Get the feedback from the database.
      *
-     * @param stdClass|null $grade
-     * @param MoodleQuickForm $mform
-     * @param stdClass $data
-     * @return bool true if elements were added to the form
+     * @param int $gradeid
+     * @return mixed The feedback record or false if not found
      */
-    public function get_form_elements_for_user($grade, MoodleQuickForm $mform, stdClass $data, $userid) {
-        $submission = $this->assignment->get_user_submission($userid, false);
-        $feedbackcomments = false;
+    public function get_feedback($gradeid) {
+        global $DB;
+        return $DB->get_record('assignfeedback_smartfeedback', ['grade' => $gradeid]);
+    }
 
-        $mform->addElement('textarea', 'introduction', "HEY", 'wrap="virtual" rows="20" cols="50"');
+    /**
+     * Display the feedback in the feedback table.
+     *
+     * @param stdClass $grade
+     * @param bool $showviewlink
+     * @return string
+     */
+    public function view_summary(stdClass $grade, & $showviewlink) {
+        $feedback = $this->get_feedback($grade->id);
+        if ($feedback) {
+            $text = format_text($feedback->feedbacktext, $feedback->feedbackformat);
+            $short = shorten_text($text, 140);
+            $showviewlink = $short != $text;
+            return $short;
+        }
+        return '';
+    }
 
+    /**
+     * Display the full feedback
+     *
+     * @param stdClass $grade
+     * @return string
+     */
+    public function view(stdClass $grade) {
+        $feedback = $this->get_feedback($grade->id);
+        if ($feedback) {
+            return format_text($feedback->feedbacktext, $feedback->feedbackformat);
+        }
+        return '';
+    }
+
+    /**
+     * Return true if there is no feedback.
+     *
+     * @param stdClass $grade
+     * @return bool
+     */
+    public function is_empty(stdClass $grade) {
+        return $this->view($grade) == '';
+    }
+
+    /**
+     * The assignment has been deleted - cleanup
+     *
+     * @return bool
+     */
+    public function delete_instance() {
+        global $DB;
+        $DB->delete_records('assignfeedback_smartfeedback', 
+                           ['assignment' => $this->assignment->get_instance()->id]);
         return true;
     }
 }
