@@ -30,54 +30,40 @@ defined('MOODLE_INTERNAL') || die();
          self::process_submission($event);
      }
  
-     /**
-      * Process the submission and generate automatic feedback
-      *
-      * @param \core\event\base $event The event
-      */
      private static function process_submission(\core\event\base $event) {
-         global $DB, $CFG;
-         
-         require_once($CFG->dirroot . '/mod/assign/locallib.php');
-
-            // Get submission info from the event
-        $submissionid = $event->other['submissionid'];
-        $submission = $event->get_record_snapshot('assign_submission', $submissionid);
-
-        // Recover the context and course module
+        global $DB, $CFG;
+    
+        require_once($CFG->dirroot . '/mod/assign/locallib.php');
+    
+        $submission = self::get_submission_from_event($event);
         $context = $event->get_context();
         $cm = get_coursemodule_from_id('assign', $context->instanceid);
-
-        // Load the assignment record from DB (since event doesn't give assignid directly)
-        $assignment = $DB->get_record('assign', ['id' => $cm->instance], '*', MUST_EXIST);
-
-        // Create the assign class instance
+        $assignment = self::get_assignment_from_cm($cm);
         $assign = new \assign($context, $cm, $assignment->course);
+    
+        if (!self::is_plugin_enabled($assign, 'smartfeedback')) {
+            return;
+        }
+    
+        $feedback = self::generate_feedback($assign, $submission);
+        self::save_feedback($assign, $submission, $feedback);
+    }
 
-        // Get the user ID from the submission
-        $userid = $submission->userid;
-
-        
-         // Check if our plugin is enabled for this assignment
-         $plugin = $assign->get_feedback_plugin_by_type('smartfeedback');
-         if (!$plugin->is_enabled()) {
-             return;
-         }
- 
-         // Process the submission and generate a feedback
-         $feedback = self::generate_feedback($assign, $submission);
-         
-         // Create or update the feedback in the database
-         self::save_feedback($assign, $submission, $feedback);
-     }
-     
-     /**
-      * Generate a feedback for the submission
-      * 
-      * @param \assign $assign
-      * @param stdClass $submission
-      * @return string The generated feedback
-      */
+    private static function get_submission_from_event(\core\event\base $event) {
+        $submissionid = $event->other['submissionid'];
+        return $event->get_record_snapshot('assign_submission', $submissionid);
+    }
+    
+    private static function get_assignment_from_cm($cm) {
+        global $DB;
+        return $DB->get_record('assign', ['id' => $cm->instance], '*', MUST_EXIST);
+    }
+    
+    private static function is_plugin_enabled(\assign $assign, string $pluginname): bool {
+        $plugin = $assign->get_feedback_plugin_by_type($pluginname);
+        return $plugin && $plugin->is_enabled();
+    }
+    
      private static function generate_feedback($assign, $submission) {
          // 1. Retrieve submission content
          $plugins = $assign->get_submission_plugins();
