@@ -38,6 +38,75 @@ class assign_feedback_smartfeedback extends assign_feedback_plugin {
     }
 
     /**
+     * Get the default setting for smart feedback plugin
+     *
+     * @param MoodleQuickForm $mform The form to add elements to
+     * @return void
+     */
+    public function get_settings(MoodleQuickForm $mform) {
+        $mform->addElement('header', 'smartfeedbackheader', get_string('pluginname', 'assignfeedback_smartfeedback'));
+        
+        // Instructions for AI feedback
+        $mform->addElement('textarea', 'assignfeedback_smartfeedback_instructions', 
+                        get_string('feedbackinstructions', 'assignfeedback_smartfeedback'),
+                        ['rows' => 6]);
+        $mform->addHelpButton('assignfeedback_smartfeedback_instructions', 
+                        'feedbackinstructions', 'assignfeedback_smartfeedback');
+        
+        // Reference material
+        $mform->addElement('textarea', 'assignfeedback_smartfeedback_reference', 
+                        get_string('referencematerial', 'assignfeedback_smartfeedback'),
+                        ['rows' => 10]);
+        $mform->addHelpButton('assignfeedback_smartfeedback_reference', 
+                        'referencematerial', 'assignfeedback_smartfeedback');
+        
+        return true;
+    }
+
+    /**
+    * Save the settings for smart feedback plugin
+    *
+    * @param stdClass $data
+    * @return bool
+    */
+    public function save_settings(stdClass $data) {
+        global $DB;
+        
+        // Save the instructions and reference material
+        $config = $DB->get_record('assignfeedback_smartfeedback_conf',
+                                ['assignment' => $this->assignment->get_instance()->id]);
+        
+        if ($config) {
+            $config->instructions = $data->assignfeedback_smartfeedback_instructions;
+            $config->referencematerial = $data->assignfeedback_smartfeedback_reference;
+            return $DB->update_record('assignfeedback_smartfeedback_conf', $config);
+        } else {
+            $config = new stdClass();
+            $config->assignment = $this->assignment->get_instance()->id;
+            $config->instructions = $data->assignfeedback_smartfeedback_instructions;
+            $config->referencematerial = $data->assignfeedback_smartfeedback_reference;
+            return $DB->insert_record('assignfeedback_smartfeedback_conf', $config) > 0;
+        }
+    }
+
+    /**
+     * Get config data for this assignment - used for defaults.
+     * @return stdClass The config data
+     */
+    public function get_config_data() {
+        global $DB;
+        
+        $config = $DB->get_record('assignfeedback_smartfeedback_conf',
+                                ['assignment' => $this->assignment->get_instance()->id]);
+        
+        if ($config) {
+            return $config;
+        }
+        
+        return new stdClass();
+    }
+
+    /**
      * Display the feedback in the feedback table.
      *
      * @param stdClass $grade
