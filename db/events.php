@@ -1,4 +1,5 @@
 <?php
+
 /**
  *
  * @package   assignfeedback_smartfeedback
@@ -6,7 +7,7 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
- $observers = [
+$observers = [
     [
         'eventname' => '\\mod_assign\\event\\submission_created',
         'callback' => '\\assignfeedback_smartfeedback\\event\\submission_observer::submission_created',

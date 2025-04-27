@@ -1,4 +1,5 @@
 <?php
+
 /**
  * This file contains the version information for the smartfeedback feedback plugin
  *
