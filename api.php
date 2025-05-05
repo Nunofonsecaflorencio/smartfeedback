@@ -7,10 +7,10 @@
  * @copyright 2025, Nuno Fonseca <nunofonsecaflorencio@gmail.com>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-
-namespace assignfeedback_smartfeedback\openai;
+require_once($CFG->libdir . '/vendor/autoload.php');
 
 defined('MOODLE_INTERNAL') || die();
+
 
 /**
  * OpenAI API client for generating feedback
@@ -29,6 +29,7 @@ class api
 
     /** @var int Maximum tokens to generate */
     private $maxtoken;
+    private $client;
 
     /**
      * Constructor.
@@ -38,6 +39,7 @@ class api
         $this->apikey = get_config('assignfeedback_smartfeedback', 'apikey');
         $this->model = get_config('assignfeedback_smartfeedback', 'model');
         $this->maxtoken = get_config('assignfeedback_smartfeedback', 'maxtoken');
+        $this->client = OpenAI::client(get_config('assignfeedback_smartfeedback', 'apikey'));
     }
 
     /**
@@ -101,53 +103,12 @@ class api
             'temperature' => 0.7
         ];
 
-        $response = $this->call_openai_api('https://api.openai.com/v1/chat/completions', $payload);
+        $response = $this->client->chat()->create($payload);
 
         if ($response && isset($response->choices) && isset($response->choices[0]->message->content)) {
             return $response->choices[0]->message->content;
         }
 
         return false;
-    }
-
-    /**
-     * Call the OpenAI API
-     *
-     * @param string $url API endpoint URL
-     * @param array $payload Request payload
-     * @return object|bool Response object or false on failure
-     */
-    private function call_openai_api($url, $payload)
-    {
-        $curl = curl_init();
-
-        $headers = [
-            'Content-Type: application/json',
-            'Authorization: Bearer ' . $this->apikey
-        ];
-
-        curl_setopt_array($curl, [
-            CURLOPT_URL => $url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_ENCODING => '',
-            CURLOPT_MAXREDIRS => 10,
-            CURLOPT_TIMEOUT => 30,
-            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-            CURLOPT_CUSTOMREQUEST => 'POST',
-            CURLOPT_POSTFIELDS => json_encode($payload),
-            CURLOPT_HTTPHEADER => $headers,
-        ]);
-
-        $response = curl_exec($curl);
-        $err = curl_error($curl);
-
-        curl_close($curl);
-
-        if ($err) {
-            debugging('OpenAI API error: ' . $err, DEBUG_DEVELOPER);
-            return false;
-        }
-
-        return json_decode($response);
     }
 }

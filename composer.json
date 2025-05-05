@@ -1,0 +1,25 @@
+{
+    "name": "nunofonseca/smartfeedback",
+    "description": "Smart Feedback plugin for moodle.",
+    "type": "plugin",
+    "require": {
+        "openai-php/client": "^0.12.0",
+        "symfony/http-client": "^7.2",
+        "nyholm/psr7": "^1.8"
+    },
+    "autoload": {
+        "psr-4": {
+            "Nunofonseca\\Smartfeedback\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Nuno Fonseca"
+        }
+    ],
+    "config": {
+        "allow-plugins": {
+            "php-http/discovery": true
+        }
+    }
+}

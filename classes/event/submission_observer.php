@@ -10,6 +10,8 @@
 
 namespace assignfeedback_smartfeedback\event;
 
+use assignfeedback_smartfeedback\api;
+
 defined('MOODLE_INTERNAL') || die();
 
 
@@ -75,6 +77,9 @@ class submission_observer
 
     private static function generate_feedback($assign, $submission)
     {
+        $plugin = $assign->get_plugin_by_type('assignfeedback', 'smartfeedback');
+        $config = $plugin->get_config_data();
+
         // 1. Retrieve submission content
         $plugins = $assign->get_submission_plugins();
         $submissiontext = '';
@@ -91,22 +96,23 @@ class submission_observer
         }
 
         // 2. Process the submission text
-        // Here's where you'd implement your analysis logic
-        $feedback = "Automatic feedback of your submission:\n\n";
-
-        // Example analysis (replace with your actual processing logic):
-        $wordcount = str_word_count(strip_tags($submissiontext));
-        $feedback .= "Word count: {$wordcount} words\n";
-
-        if ($wordcount < 100) {
-            $feedback .= "Your submission seems quite short. Consider expanding your answer.\n";
-        } else if ($wordcount > 1000) {
-            $feedback .= "Your submission is quite detailed. Ensure it remains focused on the question.\n";
-        }
-
-        // Add more sophisticated analysis here
-
+        $referencematerial = "";
+        $instructions = $config->instructions;
+        $assign_intro = $assign->get_instance()->intro ?? ''; // Solve this! (returns null)
+        $ai = new api();
+        $feedback = $ai->generate_feedback($assign_intro, $submissiontext, $referencematerial, $instructions);
         return $feedback;
+    }
+
+    function process_online_text_submission($submission)
+    {
+        if ($submission->plugin === 'onlinetext') {
+            $text = $submission->data2;
+            $filename = '/tmp/submission_' . $submission->userid . '.txt';
+            file_put_contents($filename, $text);
+            return $filename;
+        }
+        return null;
     }
 
     /**
