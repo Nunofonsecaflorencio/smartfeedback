@@ -35,7 +35,7 @@ $settings->add(new admin_setting_configtext(
     'assignfeedback_smartfeedback/model',
     new lang_string('model', 'assignfeedback_smartfeedback'),
     new lang_string('model_help', 'assignfeedback_smartfeedback'),
-    'gpt-4-turbo',
+    'gpt-4.1-mini',
     PARAM_TEXT
 ));
 
