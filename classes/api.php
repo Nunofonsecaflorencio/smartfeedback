@@ -28,15 +28,65 @@ class api
         return !empty($this->apikey);
     }
 
-    public function upload_file($filename): array
+    public function upload_files_to_openai(array $localpaths): array
     {
-        $file = fopen($filename, 'r');
-        $response = $this->client->files()->upload([
-            'file' => $file,
-            'purpose' => 'answers',
+        $ids = [];
+
+        foreach ($localpaths as $path) {
+            $upload = $this->client->files()->upload([
+                'file' => fopen($path, 'r'),
+                'purpose' => 'assistants',
+            ]);
+            $ids[] = $upload->id;
+        }
+
+        return $ids;
+    }
+
+    public function request_feedback_from_openai(string $instructions, array $fileids): string
+    {
+        $vectorstore = $this->client->vectorStores()->create(
+            [
+                'file_ids' => $fileids,
+                'name' => 'SmartFeedback Submisson store'
+            ]
+        );
+
+        $assistant = $this->client->assistants()->create([
+            'model' => $this->model,
+            'name' => 'SmartFeedback',
+            'instructions' => $instructions,
+            'tools' => [['type' => 'file_search']],
+            'tool_resources' => [
+                'file_search' => [
+                    'vector_store_ids' => [$vectorstore->id]
+                ]
+            ]
         ]);
-        fclose($file);
-        return $response->toArray();
+
+        $thread = $this->client->threads()->create([]);
+        $this->client->threads()->messages()->create($thread->id, [
+            'role' => 'user',
+            'content' => "Analise a submissão do aluno e forneça um feedback construtivo em português. " .
+                "Seu feedback deve incluir: " .
+                "- Pontos fortes e aspectos positivos destacados. " .
+                "- Sugestões claras e acionáveis para melhoria. " .
+                "- Feedback alinhado com os objetivos de aprendizagem.",
+        ]);
+
+        $run = $this->client->threads()->runs()->create($thread->id, [
+            'assistant_id' => $assistant->id,
+        ]);
+
+        // Aguardar até a execução terminar
+        do {
+            sleep(1);
+            $run = $this->client->threads()->runs()->retrieve($thread->id, $run->id);
+        } while ($run->status !== 'completed');
+
+        // Pegar resposta
+        $messages = $this->client->threads()->messages()->list($thread->id);
+        return $messages->data[0]->content[0]->text->value ?? 'No feedback generated.';
     }
 
     public function generate_feedback(string $assignmentdescription, string $submissiontext, string $referencematerial, string $instructions)
@@ -46,7 +96,7 @@ class api
         }
 
         $system_message = "APENAS RESPONDA NA MESMA LÍNGUA. Você é um assistente educacional ajudando professores a fornecer feedback para os alunos. " .
-            "Analise a submissão do aluno em comparação com o material de referência e forneça um feedback construtivo em português. " .
+            "Analise a submissão do aluno e forneça um feedback construtivo em português. " .
             "Seu feedback deve incluir: " .
             "- Pontos fortes e aspectos positivos destacados. " .
             "- Sugestões claras e acionáveis para melhoria. " .

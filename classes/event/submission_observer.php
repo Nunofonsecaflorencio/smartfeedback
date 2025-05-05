@@ -75,46 +75,6 @@ class submission_observer
         return $plugin && $plugin->is_enabled();
     }
 
-    private static function generate_feedback($assign, $submission)
-    {
-        $plugin = $assign->get_plugin_by_type('assignfeedback', 'smartfeedback');
-        $config = $plugin->get_config_data();
-
-        // 1. Retrieve submission content
-        $plugins = $assign->get_submission_plugins();
-        $submissiontext = '';
-
-        foreach ($plugins as $plugin) {
-            if ($plugin->is_enabled() && $plugin->is_visible()) {
-                // For text submissions
-                if ($plugin->get_type() === 'onlinetext' && !$plugin->is_empty($submission)) {
-                    $submissiontext .= $plugin->get_editor_text('onlinetext', $submission->id);
-                }
-
-                // You can add handling for other submission types here
-            }
-        }
-
-        // 2. Process the submission text
-        $referencematerial = "";
-        $instructions = $config->instructions;
-        $assign_intro = $assign->get_instance()->intro ?? ''; // Solve this! (returns null)
-        $ai = new api();
-        $feedback = $ai->generate_feedback($assign_intro, $submissiontext, $referencematerial, $instructions);
-        return $feedback;
-    }
-
-    function process_online_text_submission($submission)
-    {
-        if ($submission->plugin === 'onlinetext') {
-            $text = $submission->data2;
-            $filename = '/tmp/submission_' . $submission->userid . '.txt';
-            file_put_contents($filename, $text);
-            return $filename;
-        }
-        return null;
-    }
-
     /**
      * Save the generated feedback
      * 
@@ -154,5 +114,71 @@ class submission_observer
             $feedbackrecord->feedbackformat = FORMAT_HTML;
             $DB->insert_record('assignfeedback_smartfeedback', $feedbackrecord);
         }
+    }
+
+    private static function generate_feedback($assign, $submission)
+    {
+        global $CFG;
+
+        require_once($CFG->libdir . '/filelib.php');
+
+        $context = $assign->get_context();
+        $ai = new api();
+
+        // 1. Obter os arquivos da submissão
+        $files = self::get_submission_files($context, $submission);
+
+        // 2. Fazer upload para OpenAI
+        $fileids = $ai->upload_files_to_openai($files);
+
+        // 3. Criar prompt com instruções e intro do trabalho
+        $instructions = self::build_instructions($assign);
+
+        // 4. Gerar feedback com a API OpenAI
+        $feedback = $ai->request_feedback_from_openai($instructions, $fileids);
+
+        return $feedback;
+    }
+
+    private static function get_submission_files($context, $submission): array
+    {
+        global $CFG;
+
+        $fs = get_file_storage();
+        $contextid = $context->id;
+        $files = [];
+
+        // Arquivos enviados (assignsubmission_file)
+        $uploaded = $fs->get_area_files($contextid, 'assignsubmission_file', 'submission_files', $submission->id, 'filepath, filename', false);
+        foreach ($uploaded as $file) {
+            if (!$file->is_directory()) {
+                $path = $CFG->tempdir . '/' . uniqid('smfbk_') . '_' . $file->get_filename();
+                $file->copy_content_to($path);
+                $files[] = $path;
+            }
+        }
+
+        // Texto online (assignsubmission_onlinetext)
+        $onlinetext = $fs->get_area_files($contextid, 'assignsubmission_onlinetext', 'content', $submission->id, 'id', false);
+        foreach ($onlinetext as $textfile) {
+            if (!$textfile->is_directory()) {
+                $html = $textfile->get_content();
+                $plain = html_to_text($html);
+                $txtpath = $CFG->tempdir . '/' . uniqid('smfbk_txt_') . '.txt';
+                file_put_contents($txtpath, $plain);
+                $files[] = $txtpath;
+            }
+        }
+
+        return $files;
+    }
+
+    private static function build_instructions(\assign $assign): string
+    {
+        $assign_instance = $assign->get_instance();
+        $intro = $assign_instance->intro;
+        $instructions = $assign_instance->instructions ?? '';
+
+        return "Assignment introduction:\n{$intro}\n\nInstructor instructions:\n{$instructions}";
     }
 }
