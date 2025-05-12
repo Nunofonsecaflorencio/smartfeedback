@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Strings for component 'assignfeedback_smartfeedback', language 'en'
  *
@@ -27,8 +28,8 @@ $string['maxtoken_help'] = 'Maximum number of tokens that can be generated in a 
 // Form elements for assignment setup
 $string['feedbackinstructions'] = 'Feedback Instructions';
 $string['feedbackinstructions_help'] = 'Instructions for the AI on how to evaluate and provide feedback for this specific assignment.';
-$string['referencematerial'] = 'Reference Material';
-$string['referencematerial_help'] = 'Source of truth or reference content that the AI should use when evaluating student submissions.';
+$string['referencematerials'] = 'Reference Material';
+$string['referencematerials_help'] = 'Source of truth or reference content that the AI should use when evaluating student submissions.';
 
 // Process messages
 $string['generatingfeedback'] = 'Generating AI feedback...';

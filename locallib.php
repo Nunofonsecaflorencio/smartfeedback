@@ -40,7 +40,18 @@ class assign_feedback_smartfeedback extends assign_feedback_plugin
         global $DB;
         return $DB->get_record('assignfeedback_smartfeedback', ['grade' => $gradeid]);
     }
+    private function get_file_options()
+    {
+        global $COURSE;
 
+        $fileoptions = array(
+            'subdirs' => 1,
+            'maxbytes' => $COURSE->maxbytes,
+            'accepted_types' => ['document'],
+            'return_types' => FILE_INTERNAL
+        );
+        return $fileoptions;
+    }
     /**
      * Get the default setting for smart feedback plugin
      *
@@ -64,18 +75,31 @@ class assign_feedback_smartfeedback extends assign_feedback_plugin
             'assignfeedback_smartfeedback'
         );
 
-        // Reference material
+        // --- Reference Materials filemanager ---
+        // 1. Prepare draft area
+        $draftitemid = file_get_submitted_draft_itemid('assignfeedback_smartfeedback_references');
+        $fileoptions = $this->get_file_options();
+
+        $data = new stdClass();
+        $data = file_prepare_standard_filemanager(
+            $data,
+            'assignfeedback_smartfeedback_references',
+            $fileoptions,
+            $this->assignment->get_context(),
+            'assignfeedback_smartfeedback',
+            'references',          // filearea
+            $draftitemid
+        );
+
+        // 2. Add filemanager element
         $mform->addElement(
-            'textarea',
-            'assignfeedback_smartfeedback_reference',
-            get_string('referencematerial', 'assignfeedback_smartfeedback'),
-            ['rows' => 10]
+            'filemanager',
+            'assignfeedback_smartfeedback_references_filemanager',
+            get_string('referencematerials', 'assignfeedback_smartfeedback'),
+            null,
+            $fileoptions
         );
-        $mform->addHelpButton(
-            'assignfeedback_smartfeedback_reference',
-            'referencematerial',
-            'assignfeedback_smartfeedback'
-        );
+        $mform->setDefault('assignfeedback_smartfeedback_references_filemanager', $draftitemid);
 
         return true;
     }
@@ -90,25 +114,48 @@ class assign_feedback_smartfeedback extends assign_feedback_plugin
     {
         global $DB;
 
-        // Save the instructions and reference material
+        $assignmentid = $this->assignment->get_instance()->id;
+        $context      = $this->assignment->get_context();
+
+        // 1. — Save AI instructions in your config table -----------------------
+
+        // Try to fetch existing config row
         $config = $DB->get_record(
             'assignfeedback_smartfeedback_conf',
-            ['assignment' => $this->assignment->get_instance()->id]
+            ['assignment' => $assignmentid]
         );
 
         if ($config) {
             $config->instructions = $data->assignfeedback_smartfeedback_instructions;
-            $config->referencematerial = $data->assignfeedback_smartfeedback_reference;
-            return $DB->update_record('assignfeedback_smartfeedback_conf', $config);
+            $DB->update_record('assignfeedback_smartfeedback_conf', $config);
         } else {
-            $config = new stdClass();
-            $config->assignment = $this->assignment->get_instance()->id;
-            $config->instructions = $data->assignfeedback_smartfeedback_instructions;
-            $config->referencematerial = $data->assignfeedback_smartfeedback_reference;
-            return $DB->insert_record('assignfeedback_smartfeedback_conf', $config) > 0;
+            $config = (object)[
+                'assignment'   => $assignmentid,
+                'instructions' => $data->assignfeedback_smartfeedback_instructions,
+            ];
+            $DB->insert_record('assignfeedback_smartfeedback_conf', $config);
         }
-    }
 
+        // 2. — Handle Reference‐Materials Filemanager -------------------------
+
+        $fileoptions = $this->get_file_options();
+
+        // Move files from draft area into:
+        // component = 'assignfeedback_smartfeedback'
+        // filearea  = 'references'
+        // itemid    = $assignmentid
+        file_postupdate_standard_filemanager(
+            $data,
+            'assignfeedback_smartfeedback_references',
+            $fileoptions,
+            $context,
+            'assignfeedback_smartfeedback',
+            'references',
+            $assignmentid
+        );
+
+        return true;
+    }
     /**
      * Get config data for this assignment - used for defaults.
      * @return stdClass The config data

@@ -126,18 +126,41 @@ class submission_observer
         $ai = new api();
 
         // 1. Obter os arquivos da submissão
-        $files = self::get_submission_files($context, $submission);
+        $submission_files = self::get_submission_files($context, $submission);
+        $reference_files = self::get_reference_files($context, $assign);
 
         // 2. Fazer upload para OpenAI
-        $fileids = $ai->upload_files_to_openai($files);
+        $submisson_file_ids = $ai->upload_files_to_openai($submission_files);
+        $reference_file_ids = $ai->upload_files_to_openai($reference_files);
 
         // 3. Criar prompt com instruções e intro do trabalho
         $instructions = self::build_instructions($assign);
 
         // 4. Gerar feedback com a API OpenAI
-        $feedback = $ai->request_feedback_from_openai($instructions, $fileids);
+        $feedback = $ai->request_feedback_from_openai($instructions, $submisson_file_ids, $reference_file_ids);
 
         return $feedback;
+    }
+
+    private static function get_reference_files($context, $assign): array
+    {
+        global $CFG;
+
+        $fs = get_file_storage();
+        $uploaded = $fs->get_area_files(
+            $context->id,
+            'assignfeedback_smartfeedback',
+            'references',
+            $assign->get_instance()->id
+        );
+        foreach ($uploaded as $file) {
+            if (!$file->is_directory()) {
+                $path = $CFG->tempdir . '/' . uniqid('REFERENCEMATERIAL') . '_' . $file->get_filename();
+                $file->copy_content_to($path);
+                $files[] = $path;
+            }
+        }
+        return $files;
     }
 
     private static function get_submission_files($context, $submission): array
@@ -152,7 +175,7 @@ class submission_observer
         $uploaded = $fs->get_area_files($contextid, 'assignsubmission_file', 'submission_files', $submission->id, 'filepath, filename', false);
         foreach ($uploaded as $file) {
             if (!$file->is_directory()) {
-                $path = $CFG->tempdir . '/' . uniqid('smfbk_') . '_' . $file->get_filename();
+                $path = $CFG->tempdir . '/' . uniqid('STUDENTSUBMISSION') . '_' . $file->get_filename();
                 $file->copy_content_to($path);
                 $files[] = $path;
             }
@@ -164,7 +187,7 @@ class submission_observer
             if (!$textfile->is_directory()) {
                 $html = $textfile->get_content();
                 $plain = html_to_text($html);
-                $txtpath = $CFG->tempdir . '/' . uniqid('smfbk_txt_') . '.txt';
+                $txtpath = $CFG->tempdir . '/' . uniqid('STUDENTSUBMISSION') . '.txt';
                 file_put_contents($txtpath, $plain);
                 $files[] = $txtpath;
             }
