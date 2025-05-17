@@ -81,6 +81,26 @@ class assign_feedback_smartfeedback extends assign_feedback_plugin
         );
 
         $fileoptions = $this->get_file_options();
+
+        $mform->addElement(
+            'filemanager',
+            "sf_referencefiles",
+            get_string('referencematerials', 'assignfeedback_smartfeedback'),
+            null,
+            $fileoptions
+        );
+
+        try {
+            $instance = $this->assignment->get_instance();
+        } catch (\TypeError $e) {
+            // No instance yet (new assignment). Nothing to load.
+            return true;
+        }
+        if (empty($instance->id)) {
+            // Still new: bail out early.
+            return true;
+        }
+
         $draftitemid = file_get_submitted_draft_itemid("sf_referencefiles");
         // Retrieve existing configuration for the assignment.
         $record = $DB->get_record('assignfeedback_smartfeedback_configs', [
@@ -103,13 +123,7 @@ class assign_feedback_smartfeedback extends assign_feedback_plugin
             );
         }
 
-        $mform->addElement(
-            'filemanager',
-            "sf_referencefiles",
-            get_string('referencematerials', 'assignfeedback_smartfeedback'),
-            null,
-            $fileoptions
-        );
+
         $mform->setDefault("sf_referencefiles", $draftitemid);
 
         return true;
@@ -188,7 +202,8 @@ class assign_feedback_smartfeedback extends assign_feedback_plugin
 
         // Create new vectorstore and capture its ID
         $storeName = "Reference files for assignment '{$assignment->name}'";
-        $vsid      = $ai->create_vectorstore_with_files($storeName, $localfiles);
+        $file_ids = $ai->upload_files_to_openai($localfiles);
+        $vsid      = $ai->create_vectorstore_with_files($storeName, $file_ids);
 
         // Persist the new vectorstore ID
         $record->reference_files_vs_id = $vsid;
