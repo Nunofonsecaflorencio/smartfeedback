@@ -16,12 +16,12 @@
       </KEYS>
     </TABLE>
 
-    <TABLE NAME="assignfeedback_smartfeedback_conf" COMMENT="Configuration for assignment's smart feedback">
+    <TABLE NAME="assignfeedback_smartfeedback_configs" COMMENT="Configuration for assignment's smart feedback">
       <FIELDS>
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
         <FIELD NAME="assignment" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="instructions" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Teacher's instructions for feedback generation"/>
-        <FIELD NAME="referencematerial" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Reference material or source of truth"/>
+        <FIELD NAME="reference_files_vs_id" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Reference material openai's vectorstore id"/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>

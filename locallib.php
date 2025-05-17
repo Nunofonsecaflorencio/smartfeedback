@@ -52,6 +52,7 @@ class assign_feedback_smartfeedback extends assign_feedback_plugin
         );
         return $fileoptions;
     }
+
     /**
      * Get the default setting for smart feedback plugin
      *
@@ -60,49 +61,58 @@ class assign_feedback_smartfeedback extends assign_feedback_plugin
      */
     public function get_settings(MoodleQuickForm $mform)
     {
+        global $DB;
+
         $mform->addElement('header', 'smartfeedbackheader', get_string('pluginname', 'assignfeedback_smartfeedback'));
 
         // Instructions for AI feedback
         $mform->addElement(
             'textarea',
-            'assignfeedback_smartfeedback_instructions',
+            'sf_instructions',
             get_string('feedbackinstructions', 'assignfeedback_smartfeedback'),
             ['rows' => 6]
         );
         $mform->addHelpButton(
-            'assignfeedback_smartfeedback_instructions',
+            'sf_instructions',
             'feedbackinstructions',
             'assignfeedback_smartfeedback'
         );
 
-        // --- Reference Materials filemanager ---
-        // 1. Prepare draft area
-        $draftitemid = file_get_submitted_draft_itemid('assignfeedback_smartfeedback_references');
         $fileoptions = $this->get_file_options();
+        $draftitemid = file_get_submitted_draft_itemid("sf_referencefiles");
+        // Retrieve existing configuration for the assignment.
+        $record = $DB->get_record('assignfeedback_smartfeedback_configs', [
+            'assignment' => $this->assignment->get_instance()->id
+        ]);
 
-        $data = new stdClass();
-        $data = file_prepare_standard_filemanager(
-            $data,
-            'assignfeedback_smartfeedback_references',
-            $fileoptions,
-            $this->assignment->get_context(),
-            'assignfeedback_smartfeedback',
-            'references',          // filearea
-            $draftitemid
-        );
+        if ($record) {
+            $context = $this->assignment->get_context();
+            // Set the default value for the instructions field.
+            $mform->setDefault("sf_instructions", $record->instructions);
+            // Prepare the draft area for existing files.
+            $draftitemid = file_get_submitted_draft_itemid('sf_referencefiles');
+            file_prepare_draft_area(
+                $draftitemid,
+                $context->id,
+                'assignfeedback_smartfeedback',
+                'referencefiles_area',
+                $record->id,
+                $fileoptions
+            );
+        }
 
-        // 2. Add filemanager element
         $mform->addElement(
             'filemanager',
-            'assignfeedback_smartfeedback_references_filemanager',
+            "sf_referencefiles",
             get_string('referencematerials', 'assignfeedback_smartfeedback'),
             null,
             $fileoptions
         );
-        $mform->setDefault('assignfeedback_smartfeedback_references_filemanager', $draftitemid);
+        $mform->setDefault("sf_referencefiles", $draftitemid);
 
         return true;
     }
+
 
     /**
      * Save the settings for smart feedback plugin
@@ -110,49 +120,56 @@ class assign_feedback_smartfeedback extends assign_feedback_plugin
      * @param stdClass $data
      * @return bool
      */
-    public function save_settings(stdClass $data)
+    public function save_settings(stdClass $formdata)
     {
         global $DB;
 
-        $assignmentid = $this->assignment->get_instance()->id;
-        $context      = $this->assignment->get_context();
-
-        // 1. — Save AI instructions in your config table -----------------------
-
-        // Try to fetch existing config row
-        $config = $DB->get_record(
-            'assignfeedback_smartfeedback_conf',
-            ['assignment' => $assignmentid]
-        );
-
-        if ($config) {
-            $config->instructions = $data->assignfeedback_smartfeedback_instructions;
-            $DB->update_record('assignfeedback_smartfeedback_conf', $config);
-        } else {
-            $config = (object)[
-                'assignment'   => $assignmentid,
-                'instructions' => $data->assignfeedback_smartfeedback_instructions,
-            ];
-            $DB->insert_record('assignfeedback_smartfeedback_conf', $config);
-        }
-
-        // 2. — Handle Reference‐Materials Filemanager -------------------------
-
+        $context = $this->assignment->get_context();
         $fileoptions = $this->get_file_options();
 
-        // Move files from draft area into:
-        // component = 'assignfeedback_smartfeedback'
-        // filearea  = 'references'
-        // itemid    = $assignmentid
-        file_postupdate_standard_filemanager(
-            $data,
-            'assignfeedback_smartfeedback_references',
-            $fileoptions,
-            $context,
+        $assignmentid = $this->assignment->get_instance()->id;
+
+        // See if a record already exists.
+        $record = $DB->get_record('assignfeedback_smartfeedback_configs', ['assignment' => $assignmentid]);
+
+        $newrecord = new stdClass();
+        $newrecord->assignment = $assignmentid;
+        $newrecord->instructions = $formdata->sf_instructions;
+
+        if ($record) {
+            $newrecord->id = $record->id;
+            $DB->update_record('assignfeedback_smartfeedback_configs', $newrecord);
+        } else {
+            $newrecord->id = $DB->insert_record('assignfeedback_smartfeedback_configs', $newrecord);
+        }
+
+        // Save uploaded files to permanent storage
+        file_save_draft_area_files(
+            $formdata->sf_referencefiles,
+            $context->id,
             'assignfeedback_smartfeedback',
-            'references',
-            $assignmentid
+            'referencefiles_area',
+            $newrecord->id, // itemid
+            $fileoptions
         );
+
+        // Get stored files
+        $fs = get_file_storage();
+        $files = $fs->get_area_files(
+            $context->id,
+            'assignfeedback_smartfeedback',
+            'referencefiles_area',
+            $newrecord->id,
+            'timemodified',
+            false
+        );
+
+        // Send to OpenAI vector store (ignore implementation)
+        $vsid = "vs_testing0"; // $this->process_files_with_openai($files); // Implement this
+
+        // Save vectorstore ID
+        $newrecord->reference_files_vs_id = $vsid;
+        $DB->update_record('assignfeedback_smartfeedback_configs', $newrecord);
 
         return true;
     }
@@ -164,13 +181,13 @@ class assign_feedback_smartfeedback extends assign_feedback_plugin
     {
         global $DB;
 
-        $config = $DB->get_record(
-            'assignfeedback_smartfeedback_conf',
+        $record = $DB->get_record(
+            'assignfeedback_smartfeedback_records',
             ['assignment' => $this->assignment->get_instance()->id]
         );
 
-        if ($config) {
-            return $config;
+        if ($record) {
+            return $record;
         }
 
         return new stdClass();
