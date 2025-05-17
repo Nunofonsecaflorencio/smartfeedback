@@ -1,3 +1,0 @@
-[submodule "classes/client"]
-	path = classes/client
-	url = https://github.com/openai-php/client.git
