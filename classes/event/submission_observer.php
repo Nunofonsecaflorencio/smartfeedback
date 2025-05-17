@@ -118,49 +118,36 @@ class submission_observer
 
     private static function generate_feedback($assign, $submission)
     {
-        global $CFG;
+        global $CFG, $DB;
 
         require_once($CFG->libdir . '/filelib.php');
 
         $context = $assign->get_context();
+        $assignment = $assign->get_instance();
         $ai = new api();
 
-        // 1. Obter os arquivos da submissão
         $submission_files = self::get_submission_files($context, $submission);
-        $reference_files = self::get_reference_files($context, $assign);
-
-        // 2. Fazer upload para OpenAI
         $submisson_file_ids = $ai->upload_files_to_openai($submission_files);
-        $reference_file_ids = $ai->upload_files_to_openai($reference_files);
+        $sub_vs_id = $ai->create_vectorstore_with_files(
+            "Files submitted by the Student to be reviwed",
+            $submisson_file_ids
+        );
 
-        // 3. Criar prompt com instruções e intro do trabalho
-        $instructions = self::build_instructions($assign);
+        $record = $DB->get_record(
+            'assignfeedback_smartfeedback_configs',
+            ['assignment' => $assignment->id]
+        );
+
 
         // 4. Gerar feedback com a API OpenAI
-        $feedback = $ai->request_feedback_from_openai($instructions, $submisson_file_ids, $reference_file_ids);
+        $feedback = $ai->request_feedback_from_openai(
+            $assignment,
+            $record->instructions ?? 'None',
+            $sub_vs_id,
+            $record->reference_files_vs_id
+        );
 
         return $feedback;
-    }
-
-    private static function get_reference_files($context, $assign): array
-    {
-        global $CFG;
-
-        $fs = get_file_storage();
-        $uploaded = $fs->get_area_files(
-            $context->id,
-            'assignfeedback_smartfeedback',
-            'references',
-            $assign->get_instance()->id
-        );
-        foreach ($uploaded as $file) {
-            if (!$file->is_directory()) {
-                $path = $CFG->tempdir . '/' . uniqid('REFERENCEMATERIAL') . '_' . $file->get_filename();
-                $file->copy_content_to($path);
-                $files[] = $path;
-            }
-        }
-        return $files;
     }
 
     private static function get_submission_files($context, $submission): array
@@ -175,7 +162,7 @@ class submission_observer
         $uploaded = $fs->get_area_files($contextid, 'assignsubmission_file', 'submission_files', $submission->id, 'filepath, filename', false);
         foreach ($uploaded as $file) {
             if (!$file->is_directory()) {
-                $path = $CFG->tempdir . '/' . uniqid('STUDENTSUBMISSION') . '_' . $file->get_filename();
+                $path = $CFG->tempdir . '/' . uniqid('STUDENTSUBMISSION_') . '_' . $file->get_filename();
                 $file->copy_content_to($path);
                 $files[] = $path;
             }
@@ -187,21 +174,12 @@ class submission_observer
             if (!$textfile->is_directory()) {
                 $html = $textfile->get_content();
                 $plain = html_to_text($html);
-                $txtpath = $CFG->tempdir . '/' . uniqid('STUDENTSUBMISSION') . '.txt';
+                $txtpath = $CFG->tempdir . '/' . uniqid('STUDENTSUBMISSION_') . '.txt';
                 file_put_contents($txtpath, $plain);
                 $files[] = $txtpath;
             }
         }
 
         return $files;
-    }
-
-    private static function build_instructions(\assign $assign): string
-    {
-        $assign_instance = $assign->get_instance();
-        $intro = $assign_instance->intro;
-        $instructions = $assign_instance->instructions ?? '';
-
-        return "Assignment introduction:\n{$intro}\n\nInstructor instructions:\n{$instructions}";
     }
 }

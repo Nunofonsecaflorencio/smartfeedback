@@ -56,9 +56,8 @@ class api
         return $this->client->vectorStores()->delete($vs_id);
     }
 
-    public function create_vectorstore_with_files(string $name, array $files)
+    public function create_vectorstore_with_files(string $name, array $file_ids)
     {
-        $file_ids = $this->upload_files_to_openai($files);
         $vs = $this->client->vectorStores()->create(
             [
                 'file_ids' => $file_ids,
@@ -69,51 +68,40 @@ class api
         return $vs->id;
     }
 
-    public function request_feedback_from_openai(string $instructions, array $submission_file_ids, array $reference_file_ids): string
+    public function request_feedback_from_openai($assignment, string $additional_instructions, string $submission_vs_id, string $reference_vs_id): string
     {
-        $submission_vectorstore = $this->client->vectorStores()->create(
-            [
-                'file_ids' => $submission_file_ids,
-                'name' => 'SmartFeedback - Student Submission Files'
-            ]
-        );
 
-        $reference_vectorstore = $this->client->vectorStores()->create(
-            [
-                'file_ids' => $reference_file_ids,
-                'name' => 'SmartFeedback - Assignment Reference Files for Feedback'
-            ]
-        );
 
         $assistant = $this->client->assistants()->create([
             'model' => $this->model,
             'name' => 'SmartFeedback',
-            'instructions' => $instructions,
+            'instructions' => get_string('assistantprompttemplate', 'assignfeedback_smartfeedback', (object)[
+                'assignmentname' => $assignment->name,
+                'assignmentdescription' => $assignment->intro,
+                'specificinstructions' => $additional_instructions
+            ]),
             'tools' => [
                 ['type' => 'file_search'],
             ],
             'tool_resources' => [
                 'file_search' => [
-                    'vector_store_ids' => [$reference_vectorstore->id]
+                    'vector_store_ids' => [$reference_vs_id]
                 ]
             ]
         ]);
 
         $thread = $this->client->threads()->create(['tool_resources' => [
             'file_search' => [
-                'vector_store_ids' => [$submission_vectorstore->id]
+                'vector_store_ids' => [$submission_vs_id]
             ]
         ]]);
-        $this->client->threads()->messages()->create($thread->id, [
-            'role' => 'user',
-            'content' => "Analise a submissão do aluno e forneça um feedback construtivo em português. " .
-                "Seu feedback deve incluir: " .
-                "- Pontos fortes e aspectos positivos destacados. " .
-                "- Sugestões claras e acionáveis para melhoria. " .
-                "- Feedback alinhado com os objetivos de aprendizagem." .
-                "\nSTUDENT SUBMISSION VECTORSTORE ID:" . $submission_vectorstore->id .
-                "\nASSIGMENT REFERENCE MATERIAL VECTORSTORE ID:" . $reference_vectorstore->id
-        ]);
+        $this->client->threads()->messages()->create(
+            $thread->id,
+            [
+                'role' => 'user',
+                'content' => get_string('threadprompttemplate', 'assignfeedback_smartfeedback')
+            ]
+        );
 
         $run = $this->client->threads()->runs()->create($thread->id, [
             'assistant_id' => $assistant->id,
@@ -124,6 +112,10 @@ class api
             sleep(1);
             $run = $this->client->threads()->runs()->retrieve($thread->id, $run->id);
         } while ($run->status !== 'completed');
+
+        // destroy
+        $this->delete_vectorstore_and_files($submission_vs_id);
+        $this->client->assistants()->delete($assistant->id);
 
         // Pegar resposta
         $messages = $this->client->threads()->messages()->list($thread->id);

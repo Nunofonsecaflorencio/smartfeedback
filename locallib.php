@@ -267,7 +267,7 @@ class assign_feedback_smartfeedback extends assign_feedback_plugin
      *
      * @return bool
      */
-    public function delete_instance()
+    public function delete_instance() // TODO: not triggered yet
     {
         global $DB;
         // Interact with OpenAI vector store
