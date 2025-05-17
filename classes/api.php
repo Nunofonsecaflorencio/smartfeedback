@@ -28,6 +28,7 @@ class api
         return !empty($this->apikey);
     }
 
+
     public function upload_files_to_openai(array $localpaths): array
     {
         $ids = [];
@@ -41,6 +42,31 @@ class api
         }
 
         return $ids;
+    }
+
+    public function delete_vectorstore_and_files(string $vs_id)
+    {
+        $files = $this->client->vectorStores()->files()->list(
+            vectorStoreId: $vs_id
+        );
+        foreach ($files->data as $file) {
+            $this->client->files()->delete($file->id);
+        }
+
+        return $this->client->vectorStores()->delete($vs_id);
+    }
+
+    public function create_vectorstore_with_files(string $name, array $files)
+    {
+        $file_ids = $this->upload_files_to_openai($files);
+        $vs = $this->client->vectorStores()->create(
+            [
+                'file_ids' => $file_ids,
+                'name' => $name
+            ]
+        );
+
+        return $vs->id;
     }
 
     public function request_feedback_from_openai(string $instructions, array $submission_file_ids, array $reference_file_ids): string

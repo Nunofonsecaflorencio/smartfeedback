@@ -8,6 +8,8 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+use assignfeedback_smartfeedback\api;
+
 defined('MOODLE_INTERNAL') || die();
 
 /**
@@ -122,57 +124,79 @@ class assign_feedback_smartfeedback extends assign_feedback_plugin
      */
     public function save_settings(stdClass $formdata)
     {
-        global $DB;
+        global $DB, $CFG;
 
-        $context = $this->assignment->get_context();
-        $fileoptions = $this->get_file_options();
+        // Prepare context, file options and assignment identifiers
+        $context      = $this->assignment->get_context();
+        $assignment   = $this->assignment->get_instance();
+        $assignmentid = $assignment->id;
+        $fileoptions  = $this->get_file_options();
 
-        $assignmentid = $this->assignment->get_instance()->id;
+        // Fetch existing config or prepare a new one
+        $config = $DB->get_record('assignfeedback_smartfeedback_configs', ['assignment' => $assignmentid]);
+        $record = (object) [
+            'assignment'             => $assignmentid,
+            'instructions'           => $formdata->sf_instructions,
+            'reference_files_vs_id'  => $config ? $config->reference_files_vs_id : null
+        ];
 
-        // See if a record already exists.
-        $record = $DB->get_record('assignfeedback_smartfeedback_configs', ['assignment' => $assignmentid]);
-
-        $newrecord = new stdClass();
-        $newrecord->assignment = $assignmentid;
-        $newrecord->instructions = $formdata->sf_instructions;
-
-        if ($record) {
-            $newrecord->id = $record->id;
-            $DB->update_record('assignfeedback_smartfeedback_configs', $newrecord);
+        // Insert or update base config (without vectorstore changes yet)
+        if ($config) {
+            $record->id = $config->id;
+            $DB->update_record('assignfeedback_smartfeedback_configs', $record);
         } else {
-            $newrecord->id = $DB->insert_record('assignfeedback_smartfeedback_configs', $newrecord);
+            $record->id = $DB->insert_record('assignfeedback_smartfeedback_configs', $record);
         }
 
-        // Save uploaded files to permanent storage
+        // Save user-uploaded files from draft to permanent area
         file_save_draft_area_files(
             $formdata->sf_referencefiles,
             $context->id,
             'assignfeedback_smartfeedback',
             'referencefiles_area',
-            $newrecord->id, // itemid
+            $record->id,
             $fileoptions
         );
 
-        // Get stored files
-        $fs = get_file_storage();
+        // Gather files for AI processing
+        $fs    = get_file_storage();
         $files = $fs->get_area_files(
             $context->id,
             'assignfeedback_smartfeedback',
             'referencefiles_area',
-            $newrecord->id,
+            $record->id,
             'timemodified',
             false
         );
 
-        // Send to OpenAI vector store (ignore implementation)
-        $vsid = "vs_testing0"; // $this->process_files_with_openai($files); // Implement this
+        $localfiles = [];
+        foreach ($files as $file) {
+            if (!$file->is_directory()) {
+                $tempfile = $CFG->tempdir . '/' . uniqid('REF_') . '_' . $file->get_filename();
+                $file->copy_content_to($tempfile);
+                $localfiles[] = $tempfile;
+            }
+        }
 
-        // Save vectorstore ID
-        $newrecord->reference_files_vs_id = $vsid;
-        $DB->update_record('assignfeedback_smartfeedback_configs', $newrecord);
+        // Interact with OpenAI vector store
+        $ai = new api();
+
+        // Remove old vectorstore if it exists
+        if ($record->reference_files_vs_id) {
+            $ai->delete_vectorstore_and_files($record->reference_files_vs_id);
+        }
+
+        // Create new vectorstore and capture its ID
+        $storeName = "Reference files for assignment '{$assignment->name}'";
+        $vsid      = $ai->create_vectorstore_with_files($storeName, $localfiles);
+
+        // Persist the new vectorstore ID
+        $record->reference_files_vs_id = $vsid;
+        $DB->update_record('assignfeedback_smartfeedback_configs', $record);
 
         return true;
     }
+
     /**
      * Get config data for this assignment - used for defaults.
      * @return stdClass The config data
@@ -182,7 +206,7 @@ class assign_feedback_smartfeedback extends assign_feedback_plugin
         global $DB;
 
         $record = $DB->get_record(
-            'assignfeedback_smartfeedback_records',
+            'assignfeedback_smartfeedback_configs',
             ['assignment' => $this->assignment->get_instance()->id]
         );
 
@@ -246,8 +270,25 @@ class assign_feedback_smartfeedback extends assign_feedback_plugin
     public function delete_instance()
     {
         global $DB;
+        // Interact with OpenAI vector store
+        $ai = new api();
+
+        $record = $DB->get_record(
+            'assignfeedback_smartfeedback_configs',
+            ['assignment' => $this->assignment->get_instance()->id]
+        );
+        // Remove old vectorstore if it exists
+        if ($record && $record->reference_files_vs_id) {
+            $ai->delete_vectorstore_and_files($record->reference_files_vs_id);
+        }
+
         $DB->delete_records(
             'assignfeedback_smartfeedback',
+            ['assignment' => $this->assignment->get_instance()->id]
+        );
+
+        $DB->delete_records(
+            'assignfeedback_smartfeedback_configs',
             ['assignment' => $this->assignment->get_instance()->id]
         );
         return true;
