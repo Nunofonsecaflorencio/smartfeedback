@@ -46,4 +46,8 @@ $string['threadprompttemplate'] = 'Provide detailed and constructive feedback on
     . '- Use the provided reference materials to support your comments.'
     . '- Be formatted as HTML (paragraphs, bullet points, etc).'
     . '- Avoid giving away direct answers or solutions.'
-    . 'Use an encouraging and professional tone.';
+    . '\n\nIn terms of response, follow this structure:'
+    . '\n[Greeting and context]'
+    . '\n[Areas for improvement and suggestions]'
+    . '\n[Encouraging conclusion]'
+    . '\nUse an encouraging and professional tone.';
