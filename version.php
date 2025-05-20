@@ -11,5 +11,5 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->version   = 2025041401;
-$plugin->requires  = 2025040800;
+$plugin->requires  = 2024042200;
 $plugin->component = 'assignfeedback_smartfeedback';
