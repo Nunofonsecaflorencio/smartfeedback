@@ -40,12 +40,14 @@ $string['assistantprompttemplate'] = 'You are an educational assistant using Vyg
     . '\nBase your support entirely on the materials provided and the context of the assignment.'
     . '\nThe teacher may have specific instructions for you: {$a->specificinstructions}';
 
-$string['threadprompttemplate'] = 'Provide detailed and constructive feedback on the attached student submission. The feedback should:'
+$string['threadprompttemplate'] = 'Provide constructive feedback on the attached student submission. The feedback should:'
     . '- Focus on helping the student improve based on the assignment objectives. '
     . '- Be written in the same language used by the student in their submission.'
     . '- Use the provided reference materials to support your comments.'
     . '- Be formatted as HTML (paragraphs, bullet points, etc).'
     . '- Avoid giving away direct answers or solutions.'
+    . '- Provide concise feedback focusing on 1–2 key areas for improvement. '
+    . '- Keep each section 2–3 sentences max.'
     . '\n\nIn terms of response, follow this structure:'
     . '\n[Greeting and context]'
     . '\n[Areas for improvement and suggestions]'
